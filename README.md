@@ -28,7 +28,7 @@ You can try a live version here:
 
 ## How to Use
 
-1. Open `splitmerge.html` in a modern browser (Chrome, Edge, Firefox, Safari)
+1. Open `index.html` in a modern browser (Chrome, Edge, Firefox, Safari)
 2. Choose a tab: **Split**, **Remove**, or **Merge**
 3. Drag & drop or click to select PDF file(s)
 4. Select/deselect pages (click on thumbnails)
@@ -39,6 +39,6 @@ You can try a live version here:
 
 ```bash
 # Just open the file
-open splitmerge.html    # macOS
-start splitmerge.html   # Windows
-xdg-open splitmerge.html # Linux
+open index.html    # macOS
+start index.html   # Windows
+xdg-open index.html # Linux
