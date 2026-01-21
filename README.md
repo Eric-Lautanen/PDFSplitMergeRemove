@@ -1,6 +1,10 @@
 # PDF Split Merge Remove
 
 **A clean, modern, browser-based PDF tool** — split documents into individual pages, merge multiple PDFs, or remove selected pages — **100% client-side** with no server upload required.
+## Demo
+
+You can try a live version here:  
+🔗 [https://eric-lautanen.github.io/PDFSplitMergeRemove/](https://eric-lautanen.github.io/PDFSplitMergeRemove/)  
 
 ## Features
 
@@ -21,11 +25,6 @@
 - **pdf.js** — for fast page rendering & preview
 - **PDF-Lib** — for actual PDF manipulation (split, merge, remove)
 - No build tools / frameworks required — pure vanilla web app
-
-## Demo
-
-You can try a live version here:  
-🔗 [https://eric-lautanen.github.io/PDFSplitMergeRemove/](https://eric-lautanen.github.io/PDFSplitMergeRemove/)  
 
 ## How to Use
 
