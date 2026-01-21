@@ -26,7 +26,6 @@
 
 You can try a live version here:  
 🔗 [https://Eric-Lautanen.github.io/PDFSplitMerge/](https://Eric-Lautanen.github.io/PDFSplitMerge/)  
-*(Update this link once you deploy it — GitHub Pages is perfect for this)*
 
 ## How to Use
 
