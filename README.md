@@ -1,4 +1,5 @@
 # PDF Split Merge Remove
+***KNOWN ERRORS***  corruption on merge/remove i'll get to it
 
 **A clean, modern, browser-based PDF tool** — split documents into individual pages, merge multiple PDFs, or remove selected pages — **100% client-side** with no server upload required.
 ## Demo
