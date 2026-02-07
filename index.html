@@ -10,6 +10,7 @@
     <meta name="pragma" content="no-cache">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23E53E3E'%3E%3Cpath d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z'/%3E%3Crect x='11' y='5' width='2' height='14' fill='%23E53E3E'/%3E%3C/svg%3E">
     <title>PDFSplitMergeRemove</title>
     
     <script>
@@ -430,6 +431,10 @@
     async function handleSplitSelect(input) {
         const file = input.files[0];
         if(!file) return;
+        if(!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+            notify("Please select a valid PDF file");
+            return;
+        }
         splitFile = file;
         document.getElementById('split-upload').style.display = 'none';
         const grid = document.getElementById('split-grid');
@@ -449,21 +454,31 @@
                 const card = document.createElement('div');
                 card.className = 'card';
                 card.onclick = () => {
-                    if(selectedPages.has(i-1)) { selectedPages.delete(i-1); card.classList.remove('selected'); }
-                    else { selectedPages.add(i-1); card.classList.add('selected'); }
+                    if(selectedPages.has(i)) { selectedPages.delete(i); card.classList.remove('selected'); }
+                    else { selectedPages.add(i); card.classList.add('selected'); }
                     updateUIState();
                 };
                 card.innerHTML = `<div class="selected-badge">✓</div>`;
                 card.appendChild(canvas);
                 grid.appendChild(card);
             }
-        } catch(e) { notify("Error rendering PDF"); }
+        } catch(e) { 
+            notify("Error rendering PDF - file may be corrupted"); 
+            console.error(e);
+            splitFile = null;
+            document.getElementById('split-upload').style.display = 'block';
+            grid.style.display = 'none';
+        }
         updateUIState();
     }
 
     async function handleRemoveSelect(input) {
         const file = input.files[0];
         if(!file) return;
+        if(!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+            notify("Please select a valid PDF file");
+            return;
+        }
         removeFile = file;
         document.getElementById('remove-upload').style.display = 'none';
         const grid = document.getElementById('remove-grid');
@@ -484,22 +499,31 @@
                 const card = document.createElement('div');
                 card.className = 'card';
                 card.onclick = () => {
-                    if(removeSelected.has(i-1)) { removeSelected.delete(i-1); card.classList.remove('selected'); }
-                    else { removeSelected.add(i-1); card.classList.add('selected'); }
+                    if(removeSelected.has(i)) { removeSelected.delete(i); card.classList.remove('selected'); }
+                    else { removeSelected.add(i); card.classList.add('selected'); }
                     updateUIState();
                 };
                 card.innerHTML = `<div class="selected-badge">✕</div>`;
                 card.appendChild(canvas);
                 grid.appendChild(card);
             }
-        } catch(e) { notify("Error rendering PDF"); }
+        } catch(e) { 
+            notify("Error rendering PDF - file may be corrupted"); 
+            console.error(e);
+            removeFile = null;
+            document.getElementById('remove-upload').style.display = 'block';
+            grid.style.display = 'none';
+        }
         updateUIState();
     }
 
     async function handleMergeSelect(input) {
         const files = Array.from(input.files);
         for(let file of files) {
-            if(file.type !== 'application/pdf') continue;
+            if(!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+                notify(`Skipping ${file.name} - not a PDF`);
+                continue;
+            }
             try {
                 const arr = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument(arr).promise;
@@ -509,7 +533,10 @@
                 canvas.height = viewport.height; canvas.width = viewport.width;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
                 mergeFiles.push({ file, canvas });
-            } catch(e) {}
+            } catch(e) {
+                notify(`Error loading ${file.name}`);
+                console.error(e);
+            }
         }
         renderMergeGrid(); updateUIState();
     }
@@ -548,63 +575,122 @@
 
         try {
             const { PDFDocument } = PDFLib;
-            if(activeTab === 'split') {
-                const doc = await PDFDocument.load(await splitFile.arrayBuffer());
-                const indices = selectedPages.size === 0 ? doc.getPageIndices() : Array.from(selectedPages).sort((a,b)=>a-b);
+
+            // Common save options for maximum compatibility
+            // Disabling object streams fixes many "Can't open file" errors
+            const saveOptions = { useObjectStreams: false };
+
+            if (activeTab === 'split') {
+                const doc = await PDFDocument.load(await splitFile.arrayBuffer(), { ignoreEncryption: true });
+                // Get ALL page numbers if none selected, otherwise just selected
+                const pageNumbers = selectedPages.size === 0 ? 
+                    Array.from({length: doc.getPageCount()}, (_, i) => i + 1) : 
+                    Array.from(selectedPages).sort((a,b)=>a-b);
+                
                 const canvases = Array.from(document.querySelectorAll('#split-grid canvas'));
 
-                for(let idx of indices) {
+                for(let pageNum of pageNumbers) {
                     const newDoc = await PDFDocument.create();
-                    const [p] = await newDoc.copyPages(doc, [idx]);
+                    // Copy specific page
+                    const [p] = await newDoc.copyPages(doc, [pageNum - 1]);
                     newDoc.addPage(p);
-                    const bytes = await newDoc.save();
-                    const pdfBytes = new Uint8Array(bytes);
+                    
+                    const bytes = await newDoc.save(saveOptions);
+                    
+                    // Create preview from existing canvas to save processing time
+                    const sourceCanvas = canvases[pageNum - 1];
                     const preview = document.createElement('canvas');
-                    preview.width = canvases[idx].width; preview.height = canvases[idx].height;
-                    preview.getContext('2d').drawImage(canvases[idx], 0, 0);
+                    if (sourceCanvas) {
+                        preview.width = sourceCanvas.width; 
+                        preview.height = sourceCanvas.height;
+                        preview.getContext('2d').drawImage(sourceCanvas, 0, 0);
+                    }
 
-                    results.push({ blob: new Blob([pdfBytes.buffer], {type:'application/pdf'}), name: `${splitFile.name.replace(/\.pdf$/i, '')}_Page_${idx+1}.pdf`, canvas: preview });
+                    results.push({ 
+                        blob: new Blob([bytes], {type:'application/pdf'}), 
+                        name: `${splitFile.name.replace(/\.pdf$/i, '')}_Page_${pageNum}.pdf`, 
+                        canvas: preview 
+                    });
                 }
                 openModal("Split Complete", results);
-            } else if(activeTab === 'remove') {
-                const doc = await PDFDocument.load(await removeFile.arrayBuffer());
-                const allIndices = doc.getPageIndices();
-                const indicesToKeep = allIndices.filter(i => !removeSelected.has(i));
-                const newDoc = await PDFDocument.create();
-                const pages = await newDoc.copyPages(doc, indicesToKeep);
-                pages.forEach(p => newDoc.addPage(p));
-                const bytes = await newDoc.save();
-                const pdfBytes = new Uint8Array(bytes);
-                const pdf = await pdfjsLib.getDocument({data: pdfBytes}).promise;
+
+            } else if (activeTab === 'remove') {
+                // STRATEGY CHANGE: Load original, delete unwanted, save.
+                // This preserves valid file structure better than creating new.
+                const sourceBytes = await removeFile.arrayBuffer();
+                const doc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+                
+                // Sort descending so indices don't shift when we delete
+                const pagesToDelete = Array.from(removeSelected).sort((a, b) => b - a);
+                
+                pagesToDelete.forEach((pageNum, deletionCount) => {
+                    doc.removePage(pageNum - 1 - deletionCount);
+                });
+                
+                const bytes = await doc.save(saveOptions);
+                
+                // Generate Preview of first page of result
+                const pdf = await pdfjsLib.getDocument({data: bytes}).promise;
                 const page = await pdf.getPage(1);
                 const viewport = page.getViewport({ scale: 0.3 });
                 const canvas = document.createElement('canvas');
                 canvas.height = viewport.height; canvas.width = viewport.width;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
-                results.push({ blob: new Blob([pdfBytes.buffer], {type:'application/pdf'}), name: `${removeFile.name.replace(/\.pdf$/i, '')}_Cleaned.pdf`, canvas: canvas });
+                results.push({ 
+                    blob: new Blob([bytes], {type:'application/pdf'}), 
+                    name: `${removeFile.name.replace(/\.pdf$/i, '')}_Cleaned.pdf`, 
+                    canvas: canvas 
+                });
                 openModal("Pages Removed", results);
-            } else {
-                const merged = await PDFDocument.create();
-                for(let item of mergeFiles) {
-                    const doc = await PDFDocument.load(await item.file.arrayBuffer());
-                    const pages = await merged.copyPages(doc, doc.getPageIndices());
-                    pages.forEach(p => merged.addPage(p));
-                }
-                const bytes = await merged.save();
-                const pdfBytes = new Uint8Array(bytes);
-                // Create single preview for merged doc
-                const pdf = await pdfjsLib.getDocument({data: pdfBytes}).promise;
-                const page = await pdf.getPage(1);
-                const viewport = page.getViewport({ scale: 0.3 });
-                const canvas = document.createElement('canvas');
-                canvas.height = viewport.height; canvas.width = viewport.width;
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
-                results.push({ blob: new Blob([pdfBytes.buffer], {type:'application/pdf'}), name: `${mergeFiles[0].file.name.replace(/\.pdf$/i, '')}_Merged.pdf`, canvas: canvas });
-                openModal("Merge Complete", results);
+            } else {
+                // STRATEGY CHANGE: Load first file as base, add others to it.
+                if (mergeFiles.length > 0) {
+                    // 1. Load the first document as the "Base"
+                    const firstFileBytes = await mergeFiles[0].file.arrayBuffer();
+                    const mergedDoc = await PDFDocument.load(firstFileBytes, { ignoreEncryption: true });
+
+                    // 2. Iterate through the REST of the files
+                    for(let i = 1; i < mergeFiles.length; i++) {
+                        try {
+                            const sourceBytes = await mergeFiles[i].file.arrayBuffer();
+                            const sourceDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+                            
+                            // Batch copy all pages from source
+                            const indices = sourceDoc.getPageIndices();
+                            const copiedPages = await mergedDoc.copyPages(sourceDoc, indices);
+                            
+                            // Add pages to the end of mergedDoc
+                            copiedPages.forEach(page => mergedDoc.addPage(page));
+                        } catch(err) {
+                            console.error(`Error merging file ${i}:`, err);
+                            notify(`Error processing ${mergeFiles[i].file.name}`);
+                        }
+                    }
+                    
+                    const bytes = await mergedDoc.save(saveOptions);
+                    
+                    // Generate Preview
+                    const pdf = await pdfjsLib.getDocument({data: bytes}).promise;
+                    const page = await pdf.getPage(1);
+                    const viewport = page.getViewport({ scale: 0.3 });
+                    const canvas = document.createElement('canvas');
+                    canvas.height = viewport.height; canvas.width = viewport.width;
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+                    results.push({ 
+                        blob: new Blob([bytes], {type:'application/pdf'}), 
+                        name: `${mergeFiles[0].file.name.replace(/\.pdf$/i, '')}_Merged.pdf`, 
+                        canvas: canvas 
+                    });
+                    openModal("Merge Complete", results);
+                }
             }
-        } catch(e) { notify("Error processing"); }
+        } catch(e) { 
+            notify("Error creating PDF. Try a different file."); 
+            console.error(e);
+        }
         btn.disabled = false; updateUIState();
     }
 
